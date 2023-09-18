@@ -368,7 +368,7 @@ cy_rslt_t cy_rtos_thread_set_notification(cy_thread_t* thread)
             BaseType_t taskWoken = pdFALSE;
             /* No error checking as this function always returns pdPASS. */
             vTaskNotifyGiveFromISR(*thread, &taskWoken);
-            portEND_SWITCHING_ISR(taskWoken);
+//            portEND_SWITCHING_ISR(taskWoken);
         }
         else
         {
@@ -766,7 +766,7 @@ cy_rslt_t cy_rtos_event_setbits(cy_event_t* event, uint32_t bits)
         if (is_in_isr())
         {
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-            ret = xEventGroupSetBitsFromISR(*event, (EventBits_t)bits, &xHigherPriorityTaskWoken);
+//            ret = xEventGroupSetBitsFromISR(*event, (EventBits_t)bits, &xHigherPriorityTaskWoken);
 
             if (ret == pdTRUE)
             {
