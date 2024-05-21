@@ -23,7 +23,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  **************************************************************************************************/
+#ifndef __riscv
 #include <cmsis_compiler.h> // For __WEAK
+#endif
 #include "FreeRTOS.h"
 #include "cyabs_rtos.h"
 #include "cyabs_rtos_dsram.h"
