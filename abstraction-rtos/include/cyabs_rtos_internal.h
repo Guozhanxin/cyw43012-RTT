@@ -30,6 +30,9 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+
+#ifndef __riscv
+
 #if !defined (COMPONENT_CAT5)
 #include <cmsis_compiler.h>
 #endif
@@ -51,6 +54,9 @@ static inline bool is_in_isr(void)
     return (__get_IPSR() != 0);
     #endif
 }
+#else
+extern bool is_in_isr(void);
+#endif
 
 
 #if defined(__cplusplus)
