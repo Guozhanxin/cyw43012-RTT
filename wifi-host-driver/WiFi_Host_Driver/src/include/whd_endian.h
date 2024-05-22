@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -66,4 +66,3 @@ extern "C"
 #endif
 
 #endif /* INCLUDED_WHD_ENDIAN_H */
-

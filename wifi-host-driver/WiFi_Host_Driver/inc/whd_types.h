@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,9 +59,17 @@ extern "C"
 #define PM2_POWERSAVE_MODE          (2) /**< Powersave mode on specified interface with High throughput */
 #define NO_POWERSAVE_MODE           (0) /**< No Powersave mode */
 
+#define ULP_BUSWIDTH_INTR_MODE      (0) /**< Use BUS Width Interrupt method, when device is in DS2 state Exit */
+#define ULP_OOB_INTR_MODE           (1) /**< Use OOB interrupt method, when device is in DS2 state Exit */
+#define ULP_ASYNC_INTR_MODE         (2) /**< Use Asynchronous method, when device is in DS2 state Exit */
+
 #define PMKID_LEN                   (16) /**< PMKID LENGTH */
 
+#define ULP_NO_SUPPORT              (0) /**< Flag to disable ULP in 43022 */
+#define ULP_DS1_SUPPORT             (1) /**< Flag to enable DS1 mode in 43022 */
+#define ULP_DS2_SUPPORT             (2) /**< Flag to enable DS2 mode in 43022(Only supported in DM) */
 #define WHD_OOB_CONFIG_VERSION      (2) /**< Indicate the version for whd_oob_config structure */
+#define WHD_SAP_USE_CHANSPEC        (1) /**< Define this macro as any value indicate whd_wifi_init_ap api uses chanspec instead of channel */
 
 /**
  * Suppress unused parameter warning
@@ -96,6 +104,10 @@ typedef struct wl_pkt_filter_stats whd_pkt_filter_stats_t;
 typedef struct whd_tko_retry whd_tko_retry_t;
 typedef struct whd_tko_connect whd_tko_connect_t;
 typedef struct whd_tko_status whd_tko_status_t;
+typedef struct whd_tko_auto_filter whd_tko_auto_filter_t;
+typedef struct whd_tko_autoconnect whd_tko_autoconnect_t;
+typedef struct tls_param_info  tls_param_info_t;
+typedef struct secure_sess_info secure_sess_info_t;
 /** @endcond */
 /******************************************************
 *                    Constants
@@ -107,6 +119,8 @@ typedef struct whd_tko_status whd_tko_status_t;
 /* Below constants are used to allocate the buffer pool by the application */
 
 #define BDC_HEADER_WITH_PAD 6  /**< BDC Header with padding 4 + 2 */
+
+#define MSGBUF_OVERHEAD_WITH_PAD 6  /**< Overhaed Space with padding 4 + 2 */
 
 /** From bdc header, Ethernet data starts after an offset of (bdc_header->data_offset<<2).
  * It is variable, but usually 4.
@@ -121,18 +135,28 @@ typedef struct whd_tko_status whd_tko_status_t;
 #define MAX_BUS_HEADER_SIZE 4 /**< Max bus header size for all bus types (spi) */
 #elif (CYBSP_WIFI_INTERFACE_TYPE == CYBSP_M2M_INTERFACE)
 #define MAX_BUS_HEADER_SIZE 8 /**< Max bus header size for all bus types (m2m) */
+#elif defined(COMPONENT_WIFI_INTERFACE_OCI)
+#define MAX_BUS_HEADER_SIZE 8 /**< Max bus header size for all bus types (custom/oci) */
 #else
-#error "CYBSP_WIFI_INTERFACE_TYPE is not defined"
+#error "CYBSP_WIFI_INTERFACE_TYPE or COMPONENT_WIFI_INTERFACE_OCI is not defined"
 #endif
 
 #define BUFFER_OVERHEAD 4 /**< Buffer overhead, sizeof(void *) */
 
+#ifndef PROTO_MSGBUF
 /**
  * The maximum space in bytes required for headers in front of the Ethernet header.
  * 6 + (8 + 4) + 4 + 4 + 4 = 30 bytes
  */
 #define WHD_LINK_HEADER (BDC_HEADER_WITH_PAD + BDC_HEADER_OFFSET_TO_DATA + \
                          SDPCM_HEADER + MAX_BUS_HEADER_SIZE + BUFFER_OVERHEAD)
+#else
+/*
+ * In nx_user.h NX_PHYSICAL_HEADER is (14(Ethernet) + 4(Overhaed) + 2(pad)),
+ * so we are doing the similar here -> 4(hedaer) + 2(pad) in front of ethernet header
+ */
+#define WHD_LINK_HEADER (MSGBUF_OVERHEAD_WITH_PAD)
+#endif /* PROTO_MSGBUF */
 
 /**
  * The size of an Ethernet header
@@ -268,7 +292,8 @@ typedef enum
 typedef enum
 {
     WHD_802_11_BAND_5GHZ   = 0, /**< Denotes 5GHz radio band   */
-    WHD_802_11_BAND_2_4GHZ = 1  /**< Denotes 2.4GHz radio band */
+    WHD_802_11_BAND_2_4GHZ = 1, /**< Denotes 2.4GHz radio band */
+    WHD_802_11_BAND_6GHZ   = 2  /**< Denotes 6GHz radio band   */
 } whd_802_11_band_t;
 
 /**
@@ -315,8 +340,8 @@ typedef enum
 typedef struct
 {
     int32_t number_of_bands; /**< Number of bands supported, currently 1 or 2      */
-    int32_t current_band;    /**< Current band type: WLC_BAND_2G or WLC_BAND_5G   */
-    int32_t other_band;      /**< If value of number_of_bands parameter is 2, then this member specifies the 2nd band */
+    int32_t current_band;    /**< Current band type: WLC_BAND_2G or WLC_BAND_5G or WLC_BAND_6G   */
+    int32_t other_band[2];   /**< If value of number_of_bands parameter is 2, then this member specifies the 2nd band */
 } whd_band_list_t;
 
 /**
@@ -422,8 +447,10 @@ typedef enum
  */
 typedef enum
 {
-    WHD_FWCAP_SAE = 0,     /**< Internal SAE */
-    WHD_FWCAP_SAE_EXT = 1, /**< External SAE */
+    WHD_FWCAP_SAE = 0,        /**< Internal SAE */
+    WHD_FWCAP_SAE_EXT = 1,    /**< External SAE */
+    WHD_FWCAP_OFFLOADS = 2,   /**< Offload config */
+    WHD_FWCAP_GCMP = 3,       /**< GCMP */
 } whd_fwcap_id_t;
 
 /******************************************************
@@ -923,6 +950,10 @@ typedef uint32_t whd_result_t;
 #define WHD_HAL_ERROR                    WHD_RESULT_CREATE(1069)   /**< WHD HAL Error */
 #define WHD_RTOS_STATIC_MEM_LIMIT        WHD_RESULT_CREATE(1070)   /**< Exceeding the RTOS static objects memory */
 #define WHD_NO_REGISTER_FUNCTION_POINTER WHD_RESULT_CREATE(1071)   /**< No register function pointer */
+#define WHD_BLHS_VALIDATE_FAILED         WHD_RESULT_CREATE(1072)   /**< Bootloader handshake validation failed */
+#define WHD_BUS_UP_FAIL                  WHD_RESULT_CREATE(1073)   /**< bus failed to come up */
+#define WHD_BUS_MEM_RESERVE_FAIL         WHD_RESULT_CREATE(1074)   /**< commonring reserve for write failed */
+#define WHD_NO_PKT_ID_AVAILABLE          WHD_RESULT_CREATE(1075)   /**< commonring reserve for write failed */
 
 #define WLAN_ENUM_OFFSET 2000            /**< WLAN enum offset for WHD_WLAN error processing */
 
@@ -1155,11 +1186,11 @@ typedef struct
 typedef struct whd_oob_config
 {
     cyhal_gpio_t host_oob_pin;          /**< Host-side GPIO pin selection */
+    cyhal_gpio_drive_mode_t drive_mode; /**< Host-side GPIO pin drive mode */
+    whd_bool_t init_drive_state;        /**< Host-side GPIO pin initial drive state */
     uint8_t dev_gpio_sel;               /**< WiFi device-side GPIO pin selection (must be zero) */
     whd_bool_t is_falling_edge;         /**< Interrupt trigger (polarity) */
     uint8_t intr_priority;              /**< OOB interrupt priority */
-    cyhal_gpio_drive_mode_t drive_mode; /**< Host-side GPIO pin drive mode */
-    whd_bool_t init_drive_state;        /**< Host-side GPIO pin initial drive state */
 } whd_oob_config_t;
 
 /**
@@ -1192,6 +1223,14 @@ typedef struct whd_m2m_config
     whd_bool_t is_normal_mode; /**< Default is false */
 } whd_m2m_config_t;
 
+/**
+ * Structure for OCI config parameters which can be set by application during whd power up
+ */
+typedef struct whd_oci_config
+{
+    /* Bus config */
+    whd_bool_t is_normal_mode; /**< Default is false */
+} whd_oci_config_t;
 
 /**
  * Enumeration of applicable packet mask bits for custom Information Elements (IEs)
@@ -1255,6 +1294,110 @@ typedef struct
     uint8_t *pattern;                             /**< Pattern bytes used to filter eg. "\x0800"  (must be in network byte order) */
     whd_bool_t enabled_status;                     /**< When returned from wwd_wifi_get_packet_filters, indicates if the filter is enabled */
 } whd_packet_filter_t;
+
+typedef struct whd_keep_alive
+{
+    uint32_t period_msec;
+    uint16_t len_bytes;
+    uint8_t *data;
+} whd_keep_alive_t;
+
+#define TLS_MAX_KEY_LENGTH           48
+#define TLS_MAX_MAC_KEY_LENGTH       32
+#define TLS_MAX_IV_LENGTH            32
+#define TLS_MAX_SEQUENCE_LENGTH      8
+#define TLS_MAX_PAYLOAD_LEN          1024
+
+/* Secured WOWL packet was encrypted, need decrypted before check filter match */
+typedef enum wl_wowl_tls_mode{
+    TLS_MODE_SSWOWL,
+    TLS_MODE_MIWOWL
+} wl_wowl_tls_mode_t;
+
+/* add supported cipher suite according rfc5246#appendix-A.5 */
+typedef enum {
+    TLS_RSA_WITH_AES_128_CBC_SHA     =     0x002F,
+    TLS_RSA_WITH_AES_256_CBC_SHA     =     0x0035
+} Cipher_Suite_e;
+
+typedef enum {
+    CONTENTTYPE_CHANGE_CIPHER_SPEC = 20,
+    CONTENTTYPE_ALERT,
+    CONTENTTYPE_HANDSHAKE,
+    CONTENTTYPE_APPLICATION_DATA
+} ContentType_e;
+
+typedef enum {
+    COMPRESSIONMETHOD_NULL = 0
+} CompressionMethod_e;
+
+typedef enum {
+    BULKCIPHERALGORITHM_NULL,
+    BULKCIPHERALGORITHM_RC4,
+    BULKCIPHERALGORITHM_3DES,
+    BULKCIPHERALGORITHM_AES
+} BulkCipherAlgorithm_e;
+
+typedef enum {
+    CIPHERTYPE_STREAM = 1,
+    CIPHERTYPE_BLOCK,
+    CIPHERTYPE_AEAD
+} CipherType_e;
+
+typedef enum {
+    MACALGORITHM_NULL,
+    MACALGORITHM_HMAC_MD5,
+    MACALGORITHM_HMAC_SHA1,
+    MACALGORITHM_HMAC_SHA256,
+    MACALGORITHM_HMAC_SHA384,
+    MACALGORITHM_HMAC_SHA512
+} MACAlgorithm_e;
+
+typedef struct {
+    uint8_t major;
+    uint8_t minor;
+    uint8_t padding[2];
+} ProtocolVersion;
+
+#define ETHER_ADDR_LEN      6
+#define IPV4_ADDR_LEN       4
+
+struct tls_param_info{
+    ProtocolVersion version;
+    uint32_t compression_algorithm;
+    uint32_t cipher_algorithm;
+    uint32_t cipher_type;
+    uint32_t mac_algorithm;
+    uint32_t keepalive_interval; /* keepalive interval, in seconds */
+    uint8_t read_master_key[TLS_MAX_KEY_LENGTH];
+    uint32_t read_master_key_len;
+    uint8_t read_iv[TLS_MAX_IV_LENGTH];
+    uint32_t read_iv_len;
+    uint8_t read_mac_key[TLS_MAX_MAC_KEY_LENGTH];
+    uint32_t read_mac_key_len;
+    uint8_t read_sequence[TLS_MAX_SEQUENCE_LENGTH];
+    uint32_t read_sequence_len;
+    uint8_t write_master_key[TLS_MAX_KEY_LENGTH];
+    uint32_t write_master_key_len;
+    uint8_t write_iv[TLS_MAX_IV_LENGTH];
+    uint32_t write_iv_len;
+    uint8_t write_mac_key[TLS_MAX_MAC_KEY_LENGTH];
+    uint32_t write_mac_key_len;
+    uint8_t write_sequence[TLS_MAX_SEQUENCE_LENGTH];
+    uint32_t write_sequence_len;
+    uint32_t tcp_ack_num;
+    uint32_t tcp_seq_num;
+    uint8_t local_ip[IPV4_ADDR_LEN];
+    uint8_t remote_ip[IPV4_ADDR_LEN];
+    uint16_t local_port;
+    uint16_t remote_port;
+    uint8_t local_mac_addr[ETHER_ADDR_LEN];
+    uint8_t remote_mac_addr[ETHER_ADDR_LEN];
+    uint32_t app_syncid;
+    uint8_t payload[TLS_MAX_PAYLOAD_LEN];
+    uint16_t payload_len;
+    bool encrypt_then_mac;
+};
 
 #define TKO_DATA_OFFSET offsetof(wl_tko_t, data)  /**< TKO data offset */
 

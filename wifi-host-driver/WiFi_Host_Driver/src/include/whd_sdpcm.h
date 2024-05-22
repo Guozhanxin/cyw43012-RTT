@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #ifndef INCLUDED_WHD_SDPCM_H
 #define INCLUDED_WHD_SDPCM_H
 
+#ifndef PROTO_MSGBUF
 #include "whd.h"
 #include "whd_events_int.h"
 #include "cyabs_rtos.h"
@@ -120,5 +121,6 @@ extern whd_result_t whd_send_to_bus(whd_driver_t whd_driver, whd_buffer_t buffer
 } /* extern "C" */
 #endif
 
-#endif /* ifndef INCLUDED_WHD_SDPCM_H */
+#endif /* PROTO_MSGBUF */
 
+#endif /* ifndef INCLUDED_WHD_SDPCM_H */

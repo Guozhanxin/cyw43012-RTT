@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -115,4 +115,3 @@ uint32_t whd_resource_read(whd_driver_t whd_driver, whd_resource_type_t type, ui
 
     return WHD_WLAN_NOFUNCTION;
 }
-

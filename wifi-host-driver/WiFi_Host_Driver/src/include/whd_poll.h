@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -90,4 +90,3 @@ extern int8_t whd_thread_poll_all(whd_driver_t whd_driver);
 } /* extern "C" */
 #endif
 #endif /* ifndef INCLUDED_WHD_POLL_H */
-
