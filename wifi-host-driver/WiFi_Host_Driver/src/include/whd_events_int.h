@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -409,11 +409,11 @@ extern whd_result_t whd_management_set_event_handler(whd_interface_t ifp, const 
                                                      whd_event_handler_t handler_func,
                                                      void *handler_user_data, uint16_t *event_index);
 
-extern uint32_t whd_wifi_set_event_handler(whd_interface_t ifp, const uint32_t *event_type,
+extern whd_result_t whd_wifi_set_event_handler(whd_interface_t ifp, const uint32_t *event_type,
                                            whd_event_handler_t handler_func,
                                            void *handler_user_data, uint16_t *event_index);
 
-extern uint32_t whd_wifi_deregister_event_handler(whd_interface_t ifp, uint16_t event_index);
+extern whd_result_t whd_wifi_deregister_event_handler(whd_interface_t ifp, uint16_t event_index);
 
 extern whd_result_t whd_set_error_handler_locally(whd_driver_t whd_driver, const uint8_t *error_nums,
                                                   whd_error_handler_t handler_func,
@@ -423,7 +423,7 @@ extern whd_result_t whd_wifi_set_error_handler(whd_interface_t ifp, const uint8_
                                                whd_error_handler_t handler_func,
                                                void *handler_user_data, uint16_t *error_index);
 
-extern uint32_t whd_wifi_deregister_error_handler(whd_interface_t ifp, uint16_t error_index);
+extern whd_result_t whd_wifi_deregister_error_handler(whd_interface_t ifp, uint16_t error_index);
 
 /** @cond */
 
@@ -492,6 +492,21 @@ typedef struct whd_event
 
 #pragma pack()
 
+/** Event list element structure
+ *
+ * events : A pointer to a whd_event_num_t array that is terminated with a WLC_E_NONE event
+ * handler: A pointer to the whd_event_handler_t function that will receive the event
+ * handler_user_data : User provided data that will be passed to the handler when a matching event occurs
+ */
+typedef struct
+{
+    whd_bool_t event_set;
+    whd_event_num_t events[WHD_MAX_EVENT_SUBSCRIPTION];
+    whd_event_handler_t handler;
+    void *handler_user_data;
+    uint8_t ifidx;
+} event_list_elem_t;
+
 /** @endcond */
 
 /** @} */
@@ -500,4 +515,3 @@ typedef struct whd_event
 } /* extern "C" */
 #endif
 #endif /* ifndef INCLUDED_WHD_EVENTS_H */
-

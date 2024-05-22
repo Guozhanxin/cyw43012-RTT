@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2006-2021, RT-Thread Development Team
+ * Copyright (c) 2006-2023, RT-Thread Development Team
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  * Change Logs:
  * Date           Author       Notes
- * 2023-07-25     11714       the first version
+ * 2023-07-25     11714        the first version
+ * 2024-05-22     hpmicro      Upgraded WHD to 3.1, fix 'wifi disc' issue, fix 5G Hz
  */
 #include <rtthread.h>
 #include <rtdevice.h>
@@ -135,7 +136,7 @@ static int _ifx_scan_info2rtt(whd_scan_result_t *result_ptr, struct rt_wlan_info
         break;
     }
     /* maximal data rate */
-    wlan_info->datarate = result_ptr->max_data_rate;
+    wlan_info->datarate = result_ptr->max_data_rate * 1000UL;
     /* radio channel */
     wlan_info->channel = result_ptr->channel;
     /* signal strength */
@@ -148,7 +149,7 @@ static int _ifx_scan_info2rtt(whd_scan_result_t *result_ptr, struct rt_wlan_info
     /* hwaddr */
     rt_strncpy(wlan_info->bssid, result_ptr->BSSID.octet, RT_WLAN_BSSID_MAX_LENGTH);
     wlan_info->hidden = RT_TRUE;
-    return 0;
+    return RT_EOK;
 }
 #define SCAN_BSSI_ARR_MAX 30
 
@@ -280,12 +281,12 @@ static rt_err_t wlan_scan(struct rt_wlan_device *wlan, struct rt_scan_info *scan
     memset(mac_addr_arr, sizeof(whd_mac_t) * SCAN_BSSI_ARR_MAX, 0);
     whd_wifi_scan(_GET_DEV(wlan)->whd_if, WHD_SCAN_TYPE_ACTIVE, WHD_BSS_TYPE_ANY,
     NULL, NULL, NULL, NULL, scan_callback, &scan_result, NULL);
-    return 0;
+    return RT_EOK;
 }
 static rt_err_t wlan_scan_stop(struct rt_wlan_device *wlan)
 {
     whd_wifi_stop_scan(_GET_DEV(wlan)->whd_if);
-    return 0;
+    return RT_EOK;
 }
 
 static rt_err_t wlan_join(struct rt_wlan_device *wlan, struct rt_sta_info *sta_info)
@@ -297,7 +298,6 @@ static rt_err_t wlan_join(struct rt_wlan_device *wlan, struct rt_sta_info *sta_i
     ssid.length = sta_info->ssid.len;
     ssid.value[sta_info->ssid.len] = '\0';
 
-    whd_wifi_set_ioctl_value(_GET_DEV(wlan)->whd_if, WLC_SET_BAND, WLC_BAND_2G);
     /** Join to Wi-Fi AP **/
     res = whd_wifi_join(_GET_DEV(wlan)->whd_if, &ssid, WHD_SECURITY_WPA2_AES_PSK, sta_info->key.val, sta_info->key.len);
 
@@ -310,7 +310,7 @@ static rt_err_t wlan_join(struct rt_wlan_device *wlan, struct rt_sta_info *sta_i
         rt_wlan_dev_indicate_event_handle(wifi_sta.wlan, RT_WLAN_DEV_EVT_CONNECT_FAIL, 0);
     }
 
-    return 0;
+    return RT_EOK;
 }
 
 int _wlan_send(struct rt_wlan_device *wlan, void *buff, int len)
@@ -318,12 +318,12 @@ int _wlan_send(struct rt_wlan_device *wlan, void *buff, int len)
     whd_buffer_t buffer;
     if (whd_wifi_is_ready_to_transceive(_GET_DEV(wlan)->whd_if) != WHD_SUCCESS)
     {
-        return -1;
+        return -RT_ERROR;
     }
     if (whd_host_buffer_get(_GET_DEV(wlan)->whd_if->whd_driver, &buffer, WHD_NETWORK_TX, len + WHD_LINK_HEADER, 1000) != 0)
     {
         LOG_D("err whd_host_buffer_get failed\n");
-        return -1;
+        return -RT_ERROR;
     }
 
     whd_buffer_add_remove_at_front(_GET_DEV(wlan)->whd_if->whd_driver, &buffer, WHD_LINK_HEADER);
@@ -331,7 +331,7 @@ int _wlan_send(struct rt_wlan_device *wlan, void *buff, int len)
 
     whd_network_send_ethernet_data(_GET_DEV(wlan)->whd_if, buffer);
 
-    return 0;
+    return RT_EOK;
 }
 
 rt_err_t wlan_mode(struct rt_wlan_device *wlan, rt_wlan_mode_t mode)
@@ -346,7 +346,7 @@ rt_err_t wlan_mode(struct rt_wlan_device *wlan, rt_wlan_mode_t mode)
         break;
     }
 
-    return 0;
+    return RT_EOK;
 }
 
 rt_err_t wlan_softap(struct rt_wlan_device *wlan, struct rt_ap_info *ap_info)
@@ -368,20 +368,26 @@ rt_err_t wlan_softap(struct rt_wlan_device *wlan, struct rt_ap_info *ap_info)
         rt_wlan_dev_indicate_event_handle(wifi_ap.wlan, RT_WLAN_DEV_EVT_AP_STOP, 0);
     }
 
-    return 0;
+    return RT_EOK;
 
 }
 rt_err_t wlan_disconnect(struct rt_wlan_device *wlan)
 {
     LOG_D("wlan_disconnect");
-    whd_wifi_leave(_GET_DEV(wlan)->whd_if);
-    return 0;
+    uint32_t ret = whd_wifi_leave(_GET_DEV(wlan)->whd_if);
+
+    if (ret == WHD_SUCCESS)
+    {
+        rt_wlan_dev_indicate_event_handle(wlan, RT_WLAN_DEV_EVT_DISCONNECT, RT_NULL);
+    }
+
+    return RT_EOK;
 }
 rt_err_t wlan_ap_stop(struct rt_wlan_device *wlan)
 {
     LOG_D("wlan_ap_stop");
     whd_wifi_stop_ap(_GET_DEV(wlan)->whd_if);
-    return 0;
+    return RT_EOK;
 }
 rt_err_t wlan_ap_deauth(struct rt_wlan_device *wlan, rt_uint8_t mac[])
 {
@@ -389,7 +395,7 @@ rt_err_t wlan_ap_deauth(struct rt_wlan_device *wlan, rt_uint8_t mac[])
     LOG_D("wlan_ap_deauth");
     memcpy(&_mac, mac, sizeof(whd_mac_t));
     whd_wifi_deauth_sta(_GET_DEV(wlan)->whd_if, &_mac, 0);
-    return 0;
+    return RT_EOK;
 }
 int wlan_get_rssi(struct rt_wlan_device *wlan)
 {
@@ -401,7 +407,7 @@ rt_err_t wlan_set_channel(struct rt_wlan_device *wlan, int channel)
 {
     LOG_D("wlan_set_channel");
     whd_wifi_set_channel(_GET_DEV(wlan)->whd_if, channel);
-    return 0;
+    return RT_EOK;
 }
 int wlan_get_channel(struct rt_wlan_device *wlan)
 {
@@ -415,7 +421,7 @@ rt_err_t wlan_set_mac(struct rt_wlan_device *wlan, rt_uint8_t mac[])
     whd_mac_t _mac;
     memcpy(&_mac, mac, sizeof(whd_mac_t));
     whd_wifi_set_mac_address(_GET_DEV(wlan)->whd_if, _mac);
-    return 0;
+    return RT_EOK;
 }
 rt_err_t wlan_get_mac(struct rt_wlan_device *wlan, rt_uint8_t mac[])
 {
@@ -425,7 +431,7 @@ rt_err_t wlan_get_mac(struct rt_wlan_device *wlan, rt_uint8_t mac[])
         LOG_D("WLAN MAC Address : %02X:%02X:%02X:%02X:%02X:%02X", _mac->octet[0], _mac->octet[1], _mac->octet[2],
                 _mac->octet[3], _mac->octet[4], _mac->octet[5]);
     }
-    return 0;
+    return RT_EOK;
 }
 const static struct rt_wlan_dev_ops ops =
 {

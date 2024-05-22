@@ -26,6 +26,7 @@ src += ["wifi-host-driver/WiFi_Host_Driver/resources/clm/COMPONENT_43012/43012C0
         "wifi-host-driver/WiFi_Host_Driver/src/whd_events.c",
         "wifi-host-driver/WiFi_Host_Driver/src/whd_logging.c",
         "wifi-host-driver/WiFi_Host_Driver/src/whd_management.c",
+        "wifi-host-driver/WiFi_Host_Driver/src/whd_proto.c",
         "wifi-host-driver/WiFi_Host_Driver/src/whd_network_if.c",
         "wifi-host-driver/WiFi_Host_Driver/src/whd_resource_if.c",
         "wifi-host-driver/WiFi_Host_Driver/src/whd_sdpcm.c",
@@ -44,13 +45,22 @@ path += [
         cwd + "/wifi-host-driver/WiFi_Host_Driver/resources",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/firmware/COMPONENT_43012",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/firmware",
-        cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012/COMPONENT_MURATA-1LV",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/resource_imp",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/src/bus_protocols",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/src",
         cwd + "/wifi-host-driver/WiFi_Host_Driver/src/include"]
+if GetDepend('COMPONENT_CYWL6302'):
+    path += [cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012/COMPONENT_CYWL6302"]
+elif GetDepend('COMPONENT_AW_AM497'):
+    path += [cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012/COMPONENT_AW-AM497"]
+elif GetDepend('COMPONENT_CYSBSYS_RP01'):
+    path += [cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012/COMPONENT_CYSBSYS-RP01"]
+elif GetDepend('COMPONENT_WM_BAC_CYW_50'):
+    path += [cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012/COMPONENT_WM-BAC-CYW-50"]
+else:
+    path += [cwd + "/wifi-host-driver/WiFi_Host_Driver/resources/nvram/COMPONENT_43012/COMPONENT_MURATA-1LV"]
 
 src += ["abstraction-rtos/source/COMPONENT_FREERTOS/cyabs_freertos_common.c",
         "abstraction-rtos/source/COMPONENT_FREERTOS/cyabs_freertos_helpers.c",

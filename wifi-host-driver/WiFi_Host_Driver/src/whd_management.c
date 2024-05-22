@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,6 @@
  *
  */
 
-#include <stdlib.h>
 #include <string.h>
 #include "bus_protocols/whd_bus_common.h"
 #include "bus_protocols/whd_bus_protocol_interface.h"
@@ -28,12 +27,16 @@
 #include "whd_events_int.h"
 #include "whd_int.h"
 #include "whd_chip.h"
+#include "whd_utils.h"
+#ifndef PROTO_MSGBUF
 #include "whd_sdpcm.h"
+#endif /* PROTO_MSGBUF */
 #include "whd_wifi_api.h"
 #include "whd_clm.h"
 #include "whd_wlioctl.h"
 #include "whd_types_int.h"
 #include "whd_chip_constants.h"
+#include "whd_proto.h"
 
 /******************************************************
 *             Constants
@@ -44,6 +47,10 @@
 #define MINIMUM_WHD_STACK_SIZE        (1024 + 1200 + 2500)
 
 #define DEFAULT_PM2_SLEEP_RET_TIME  200
+
+#ifdef PROTO_MSGBUF
+#define DMA_ALLOC_SIZE                 (40000)
+#endif
 /******************************************************
 *             Static Variables
 ******************************************************/
@@ -60,6 +67,15 @@ whd_interface_t whd_get_primary_interface(whd_driver_t whd_driver)
     if (whd_driver->iflist[0] != NULL)
     {
         return whd_driver->iflist[0];
+    }
+    return NULL;
+}
+
+whd_interface_t whd_get_interface(whd_driver_t whd_driver, uint8_t ifidx)
+{
+    if (whd_driver->iflist[ifidx] != NULL)
+    {
+        return whd_driver->iflist[ifidx];
     }
     return NULL;
 }
@@ -84,7 +100,7 @@ whd_result_t whd_add_interface(whd_driver_t whd_driver, uint8_t bsscfgidx, uint8
             return WHD_SUCCESS;
         }
 
-        if ( (ifp = (whd_interface_t)malloc(sizeof(struct whd_interface) ) ) != NULL )
+        if ( (ifp = (whd_interface_t)whd_mem_malloc(sizeof(struct whd_interface) ) ) != NULL )
         {
             memset(ifp, 0, (sizeof(struct whd_interface) ) );
             *ifpp = ifp;
@@ -122,12 +138,12 @@ whd_result_t whd_add_primary_interface(whd_driver_t whd_driver, whd_interface_t 
     return whd_add_interface(whd_driver, 0, 0, "wlan0", NULL, ifpp);
 }
 
-uint32_t whd_add_secondary_interface(whd_driver_t whd_driver, whd_mac_t *mac_addr, whd_interface_t *ifpp)
+whd_result_t whd_add_secondary_interface(whd_driver_t whd_driver, whd_mac_t *mac_addr, whd_interface_t *ifpp)
 {
     return whd_add_interface(whd_driver, 1, 1, "wlan1", mac_addr, ifpp);
 }
 
-uint32_t whd_init(whd_driver_t *whd_driver_ptr, whd_init_config_t *whd_init_config,
+whd_result_t whd_init(whd_driver_t *whd_driver_ptr, whd_init_config_t *whd_init_config,
                   whd_resource_source_t *resource_ops, whd_buffer_funcs_t *buffer_ops,
                   whd_netif_funcs_t *network_ops)
 {
@@ -145,7 +161,7 @@ uint32_t whd_init(whd_driver_t *whd_driver_ptr, whd_init_config_t *whd_init_conf
         return WHD_WLAN_BUFTOOSHORT;
     }
 
-    if ( (whd_drv = (whd_driver_t)malloc(sizeof(struct whd_driver) ) ) != NULL )
+    if ( (whd_drv = (whd_driver_t)whd_mem_malloc(sizeof(struct whd_driver) ) ) != NULL )
     {
         memset(whd_drv, 0, sizeof(struct whd_driver) );
         *whd_driver_ptr = whd_drv;
@@ -154,11 +170,16 @@ uint32_t whd_init(whd_driver_t *whd_driver_ptr, whd_init_config_t *whd_init_conf
         whd_drv->resource_if = resource_ops;
         whd_bus_common_info_init(whd_drv);
         whd_thread_info_init(whd_drv, whd_init_config);
-        whd_cdc_bdc_info_init(whd_drv);
         whd_internal_info_init(whd_drv);
         whd_ap_info_init(whd_drv);
         //whd_wifi_sleep_info_init(whd_drv);
         whd_wifi_chip_info_init(whd_drv);
+
+#ifdef PROTO_MSGBUF
+        /* Initialize pool for WLAN M2M DMA to access, WHD has to request pool memory
+           and open the access for WLAN through APIs(Secure Call in BTFW)*/
+        whd_dmapool_init(DMA_ALLOC_SIZE);
+#endif
 
         whd_drv->bus_gspi_32bit = WHD_FALSE;
 
@@ -174,13 +195,16 @@ uint32_t whd_init(whd_driver_t *whd_driver_ptr, whd_init_config_t *whd_init_conf
     return WHD_SUCCESS;
 }
 
-uint32_t whd_deinit(whd_interface_t ifp)
+whd_result_t whd_deinit(whd_interface_t ifp)
 {
     uint8_t i;
     whd_driver_t whd_driver;
 
     CHECK_IFP_NULL(ifp);
     whd_driver = ifp->whd_driver;
+    whd_internal_info_t *internal_info = &whd_driver->internal_info;
+    wifi_console_t *c = internal_info->c;
+    c = &internal_info->console;
 
     if (whd_driver->internal_info.whd_wlan_status.state != WLAN_OFF)
     {
@@ -198,15 +222,20 @@ uint32_t whd_deinit(whd_interface_t ifp)
     {
         if (whd_driver->iflist[i] != NULL)
         {
-            free(whd_driver->iflist[i]);
+            whd_mem_free(whd_driver->iflist[i]);
             whd_driver->iflist[i] = NULL;
         }
     }
 
-    whd_cdc_bdc_info_deinit(whd_driver);
+    /* Freeing the buffer allocated to read logs (whd_wifi_read_wlan_log_unsafe) */
+    if (c->buf != NULL)
+    {
+        whd_mem_free(c->buf);
+    }
+
     whd_internal_info_deinit(whd_driver);
     whd_bus_common_info_deinit(whd_driver);
-    free(whd_driver);
+    whd_mem_free(whd_driver);
 
     return WHD_SUCCESS;
 }
@@ -247,6 +276,8 @@ whd_result_t whd_management_wifi_platform_init(whd_driver_t whd_driver, whd_coun
         return retval;
     }
 
+    CHECK_RETURN(whd_proto_attach(whd_driver) );
+
     /* WLAN device is now powered up. Change state from OFF to DOWN */
     whd_driver->internal_info.whd_wlan_status.state = WLAN_DOWN;
 
@@ -270,7 +301,7 @@ whd_result_t whd_management_wifi_platform_init(whd_driver_t whd_driver, whd_coun
  *
  * @return WHD_SUCCESS if initialization is successful, error code otherwise
  */
-uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
+whd_result_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
 {
     wl_country_t *country_struct;
     uint32_t *ptr;
@@ -318,11 +349,13 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
         return retval;
     }
 
+#ifndef PROTO_MSGBUF
     retval = whd_bus_share_bt_init(whd_driver);
     if (retval != WHD_SUCCESS)
     {
         WPRINT_WHD_INFO( ("Shared bus for bt is fail\n") );
     }
+#endif
 
     /* Get FW Capability */
     retval = whd_wifi_read_fw_capabilities(ifp);
@@ -331,27 +364,29 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
         WPRINT_WHD_INFO( ("Get FW Capabilities Fail\n") );
     }
 
+#ifndef PROTO_MSGBUF    /* This is needed for cdc/bcd - sdpcm protocol */
     /* Turn off SDPCM TX Glomming */
     /* Note: This is only required for later chips.
      * The 4319 has glomming off by default however the 43362 has it on by default.
      */
-    data = (uint32_t *)whd_cdc_get_iovar_buffer(whd_driver, &buffer, (uint16_t)4, IOVAR_STR_TX_GLOM);
+    data = (uint32_t *)whd_proto_get_iovar_buffer(whd_driver, &buffer, (uint16_t)4, IOVAR_STR_TX_GLOM);
     if (data == NULL)
     {
         whd_assert("Could not get buffer for IOVAR", 0 != 0);
         return WHD_BUFFER_ALLOC_FAIL;
     }
     *data = 0;
-    retval = whd_cdc_send_iovar(ifp, CDC_SET, buffer, 0);
+    retval = whd_proto_set_iovar(ifp, buffer, 0);
     if ( (retval != WHD_SUCCESS) && (retval != WHD_WLAN_UNSUPPORTED) )
     {
         /* Note: System may time out here if bus interrupts are not working properly */
         WPRINT_WHD_ERROR( ("Could not turn off TX glomming\n") );
         return retval;
     }
+#endif
 
     /* Turn APSTA on */
-    data = (uint32_t *)whd_cdc_get_iovar_buffer(whd_driver, &buffer, (uint16_t)sizeof(*data), IOVAR_STR_APSTA);
+    data = (uint32_t *)whd_proto_get_iovar_buffer(whd_driver, &buffer, (uint16_t)sizeof(*data), IOVAR_STR_APSTA);
     if (data == NULL)
     {
         whd_assert("Could not get buffer for IOVAR", 0 != 0);
@@ -359,7 +394,7 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
     }
     *data = htod32( (uint32_t)1 );
     /* This will fail on manufacturing test build since it does not have APSTA available */
-    retval = whd_cdc_send_iovar(ifp, CDC_SET, buffer, 0);
+    retval = whd_proto_set_iovar(ifp, buffer, 0);
     if (retval == WHD_WLAN_UNSUPPORTED)
     {
         WPRINT_WHD_DEBUG( ("Firmware does not support APSTA\n") );
@@ -381,8 +416,8 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
      *
      */
 
-    country_struct = (wl_country_t *)whd_cdc_get_iovar_buffer(whd_driver, &buffer, (uint16_t)sizeof(wl_country_t),
-                                                              IOVAR_STR_COUNTRY);
+    country_struct = (wl_country_t *)whd_proto_get_iovar_buffer(whd_driver, &buffer, (uint16_t)sizeof(wl_country_t),
+                                                                IOVAR_STR_COUNTRY);
     if (country_struct == NULL)
     {
         whd_assert("Could not get buffer for IOCTL", 0 != 0);
@@ -403,7 +438,7 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
     {
         country_struct->rev = (int32_t)htod32(-1);
     }
-    retval = whd_cdc_send_iovar(ifp, CDC_SET, buffer, 0);
+    retval = whd_proto_set_iovar(ifp, buffer, 0);
     if (retval != WHD_SUCCESS)
     {
         /* Could not set wifi country */
@@ -418,15 +453,15 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
     for (counter = 0, retval = WHD_PENDING; retval != WHD_SUCCESS && counter < (uint32_t)MAX_POST_SET_COUNTRY_RETRY;
          ++counter)
     {
-        event_mask = (uint8_t *)whd_cdc_get_iovar_buffer(whd_driver, &buffer, (uint16_t)WL_EVENTING_MASK_LEN,
-                                                         IOVAR_STR_EVENT_MSGS);
+        event_mask = (uint8_t *)whd_proto_get_iovar_buffer(whd_driver, &buffer, (uint16_t)WL_EVENTING_MASK_LEN,
+                                                           IOVAR_STR_EVENT_MSGS);
         if (event_mask == NULL)
         {
             whd_assert("Could not get buffer for IOVAR", 0 != 0);
             return WHD_BUFFER_ALLOC_FAIL;
         }
         memset(event_mask, 0, (size_t)WL_EVENTING_MASK_LEN);
-        retval = whd_cdc_send_iovar(ifp, CDC_SET, buffer, 0);
+        retval = whd_proto_set_iovar(ifp, buffer, 0);
     }
     if (retval != WHD_SUCCESS)
     {
@@ -436,6 +471,17 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
 
     /* Send UP command */
     CHECK_RETURN(whd_wifi_set_up(ifp) );
+
+    if (whd_driver->chip_info.fwcap_flags & (1 << WHD_FWCAP_OFFLOADS) )
+    {
+        retval = whd_wifi_offload_config(ifp, OFFLOAD_FEATURE, 0);
+        if (retval != WHD_SUCCESS)
+        {
+           /* Could not initialization offload config */
+           WPRINT_WHD_ERROR( ("Could not init offload config\n") );
+           return retval;
+        }
+    }
 
     wlan_chip_id = whd_chip_get_chip_id(whd_driver);
     /* WAR: Disable WLAN PM/mpc for 43907 low power issue */
@@ -454,26 +500,47 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
             return retval;
         }
     }
+#ifdef PROTO_MSGBUF	/* To be reviewed once power save is done for H1-CP */
+    else if((wlan_chip_id == 55500) || (wlan_chip_id == 55900))
+    {
+        retval = whd_wifi_disable_powersave(ifp);
+        if (retval != WHD_SUCCESS)
+        {
+            WPRINT_WHD_ERROR( ("Failed to disable PM for CP\n") );
+            return retval;
+        }
+    }
+#endif
     else
     {
         whd_wifi_enable_powersave_with_throughput(ifp, DEFAULT_PM2_SLEEP_RET_TIME);
     }
 
+#ifdef CYCFG_ULP_SUPPORT_ENABLED
+    /* Configuring OOB mode in fw */
+    if(wlan_chip_id == 43022)
+    {
+        CHECK_RETURN_IGNORE(whd_wifi_set_iovar_value(ifp, IOVAR_STR_ULP_HOST_INTR_MODE, ULP_OOB_INTR_MODE));
+    }
+#endif
+
+#ifndef PROTO_MSGBUF
     /* Set the GMode */
-    data = (uint32_t *)whd_cdc_get_ioctl_buffer(whd_driver, &buffer, (uint16_t)4);
+    data = (uint32_t *)whd_proto_get_ioctl_buffer(whd_driver, &buffer, (uint16_t)4);
     if (data == NULL)
     {
         whd_assert("Could not get buffer for IOCTL", 0 != 0);
         return WHD_BUFFER_ALLOC_FAIL;
     }
     *data = htod32( (uint32_t)GMODE_AUTO );
-    retval = whd_cdc_send_ioctl(ifp, CDC_SET, WLC_SET_GMODE, buffer, 0);
+    retval = whd_proto_set_ioctl(ifp, WLC_SET_GMODE, buffer, 0);
     if (retval != WHD_SUCCESS)
     {
         /* Note: System may time out here if bus interrupts are not working properly */
         WPRINT_WHD_ERROR( ("Error setting gmode\n") );
         return retval;
     }
+#endif
 
     return WHD_SUCCESS;
 }
@@ -489,7 +556,7 @@ uint32_t whd_wifi_on(whd_driver_t whd_driver, whd_interface_t *ifpp)
  *
  * @return WHD_SUCCESS if deinitialization is successful, error code otherwise
  */
-uint32_t whd_wifi_off(whd_interface_t ifp)
+whd_result_t whd_wifi_off(whd_interface_t ifp)
 {
     whd_result_t retval;
     whd_driver_t whd_driver;
@@ -510,6 +577,8 @@ uint32_t whd_wifi_off(whd_interface_t ifp)
     whd_bus_irq_enable(whd_driver, WHD_FALSE);
     whd_thread_quit(whd_driver);
 
+    whd_proto_detach(whd_driver);
+
     retval = whd_bus_deinit(whd_driver);
     if (retval != WHD_SUCCESS)
     {
@@ -520,4 +589,3 @@ uint32_t whd_wifi_off(whd_interface_t ifp)
     whd_driver->internal_info.whd_wlan_status.state = WLAN_OFF;
     return WHD_SUCCESS;
 }
-

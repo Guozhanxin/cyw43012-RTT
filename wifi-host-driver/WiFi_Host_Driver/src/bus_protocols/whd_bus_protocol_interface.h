@@ -1,5 +1,5 @@
 /*
- * Copyright 2023, Cypress Semiconductor Corporation (an Infineon company)
+ * Copyright 2024, Cypress Semiconductor Corporation (an Infineon company)
  * SPDX-License-Identifier: Apache-2.0
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 #include "whd_network_types.h"
 #include "whd_types_int.h"
 #include "whd_resource_api.h"
+#include "whd_bus_common.h"
 
 #ifndef INCLUDED_WHD_BUS_PROTOCOL_INTERFACE_H_
 #define INCLUDED_WHD_BUS_PROTOCOL_INTERFACE_H_
@@ -85,7 +86,7 @@ extern whd_result_t whd_bus_share_bt_init(whd_driver_t whd_driver);
 extern whd_result_t whd_bus_bt_attach(whd_driver_t whd_driver, void *btdata,
                                       void (*bt_int_fun)(void *data) );
 extern void whd_bus_bt_detach(whd_driver_t whd_driver);
-extern uint32_t whd_get_bt_info(whd_driver_t whd_drv, whd_bt_info_t bt_info);
+extern whd_result_t whd_get_bt_info(whd_driver_t whd_drv, whd_bt_info_t bt_info);
 /* Initialisation functions */
 extern whd_result_t whd_bus_init(whd_driver_t whd_driver);
 extern whd_result_t whd_bus_deinit(whd_driver_t whd_driver);
@@ -133,7 +134,10 @@ extern whd_result_t whd_bus_reinit_stats(whd_driver_t whd_driver, whd_bool_t wak
 extern whd_result_t whd_bus_irq_enable(whd_driver_t whd_driver, whd_bool_t enable);
 extern whd_result_t whd_bus_irq_register(whd_driver_t whd_driver);
 extern whd_result_t whd_bus_download_resource(whd_driver_t whd_driver, whd_resource_type_t resource,
-											  whd_bool_t direct_resource, uint32_t address, uint32_t image_size);
+                                              whd_bool_t direct_resource, uint32_t address, uint32_t image_size);
+#ifdef BLHS_SUPPORT
+extern whd_result_t whd_bus_common_blhs(whd_driver_t whd_driver, whd_bus_blhs_stage_t stage);
+#endif
 /******************************************************
 *             Global variables
 ******************************************************/
